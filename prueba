@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>ESP32 BLE Monitor</title>
+
+<style>
+:root {
+  --bg-main: #0b1220;
+  --bg-panel: #121a2f;
+  --bg-card: #17223b;
+  --primary: #3b82f6;
+  --success: #22c55e;
+  --danger: #ef4444;
+  --warning: #f59e0b;
+  --text-main: #e5e7eb;
+  --text-muted: #94a3b8;
+  --border: #1e293b;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  background: radial-gradient(circle at top, #0f172a, #020617);
+  color: var(--text-main);
+}
+
+header {
+  padding: 20px 24px;
+  background: #020617;
+  border-bottom: 1px solid var(--border);
+}
+
+header h1 { margin: 0; font-size: 20px; font-weight: 600; }
+
+nav {
+  display: flex;
+  gap: 10px;
+  padding: 12px 20px;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+}
+
+nav button {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  padding: 10px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+nav button:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+main { padding: 24px; }
+.page { display: none; }
+.page.active { display: block; }
+
+.card {
+  background: linear-gradient(180deg, var(--bg-card), var(--bg-panel));
+  border-radius: 16px;
+  padding: 22px;
+  border: 1px solid var(--border);
+  box-shadow: 0 20px 40px rgba(0,0,0,.35);
+  margin-bottom: 20px;
+}
+
+.card h2 { margin: 0 0 12px; font-size: 16px; }
+
+.value {
+  font-size: 36px;
+  font-weight: 700;
+}
+
+.value.temp { color: var(--danger); }
+.value.volt { color: var(--primary); }
+.value.corr { color: var(--success); }
+
+#btnConnect {
+  background: linear-gradient(135deg, var(--primary), #2563eb);
+  border: none;
+  color: white;
+  padding: 14px 22px;
+  border-radius: 10px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#btnSD {
+  background: linear-gradient(135deg, var(--success), #16a34a);
+  border: none;
+  color: white;
+  padding: 12px 20px;
+  border-radius: 10px;
+  font-weight: 600;
+  margin-top: 10px;
+  cursor: pointer;
+}
+
+#btnSD.active {
+  background: linear-gradient(135deg, #ef4444, #b91c1c);
+}
+
+#status, #statusSD, #batStatus {
+  margin-top: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+#debug {
+  margin-top: 16px;
+  background: #020617;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 12px;
+  height: 140px;
+  overflow-y: auto;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 20px;
+}
+
+canvas {
+  margin-top: 14px;
+  background: #020617;
+  border-radius: 12px;
+  padding: 10px;
+}
+</style>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-streaming@2.0.0"></script>
+</head>
+
+<body>
+
+<header>
+  <h1>ESP32 · BLE Industrial Monitor</h1>
+</header>
+
+<nav>
+  <button onclick="showPage('inicio')">Inicio</button>
+  <button onclick="showPage('temp')">Temperatura</button>
+  <button onclick="showPage('volt')">Voltaje</button>
+  <button onclick="showPage('corr')">Corriente</button>
+  <button onclick="showPage('resumen')">Resumen</button>
+</nav>
+
+<main>
+
+<section id="inicio" class="page active">
+  <div class="card">
+    <h2>Conexión BLE</h2>
+    <button id="btnConnect">Conectar ESP32</button>
+    <div id="status">Estado: Desconectado</div>
+
+    <button id="btnSD">Rec SD: OFF</button>
+    <div id="statusSD">SD: No inicializada</div>
+
+    <div id="batStatus">🪫 Batería: --</div>
+
+    <div id="debug"></div>
+  </div>
+</section>
+
+<section id="temp" class="page">
+  <div class="card">
+    <h2>Temperatura</h2>
+    <div class="value temp" id="valTemp">-- °C</div>
+    <canvas id="chartTemp"></canvas>
+  </div>
+</section>
+
+<section id="volt" class="page">
+  <div class="card">
+    <h2>Voltaje</h2>
+    <div class="value volt" id="valVolt">-- V</div>
+    <canvas id="chartVolt"></canvas>
+  </div>
+</section>
+
+<section id="corr" class="page">
+  <div class="card">
+    <h2>Corriente</h2>
+    <div class="value corr" id="valCorr">-- A</div>
+    <canvas id="chartCorr"></canvas>
+  </div>
+</section>
+
+<section id="resumen" class="page">
+  <div class="card">
+    <h2>Resumen General</h2>
+    <strong>Temperatura:</strong> <span id="valTempSum">-- °C</span><br>
+    <strong>Voltaje:</strong> <span id="valVoltSum">-- V</span><br>
+    <strong>Corriente:</strong> <span id="valCorrSum">-- A</span>
+  </div>
+</section>
+
+</main>
+
+<script>
+let device = null;
+let characteristic = null;
+let recordingSD = false;
+
+btnConnect.onclick = connectBLE;
+btnSD.onclick = toggleSD;
+
+function showPage(id) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function logDebug(m) {
+  debug.textContent += m + "\n";
+  debug.scrollTop = debug.scrollHeight;
+}
+
+/* ===== BLE ===== */
+async function connectBLE() {
+  try {
+    logDebug("Solicitando dispositivo BLE...");
+    device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
+    });
+
+    logDebug("Dispositivo seleccionado: " + (device.name || "Sin nombre"));
+
+    const server = await device.gatt.connect();
+    logDebug("Conectado al servidor GATT");
+
+    const service = await server.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
+    characteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
+
+    await characteristic.startNotifications();
+    characteristic.addEventListener('characteristicvaluechanged', handleData);
+
+    status.textContent = "Estado: Conectado ✅";
+    logDebug("Notificaciones activadas. Esperando datos...");
+
+    device.addEventListener('gattserverdisconnected', () => {
+      logDebug("Dispositivo desconectado");
+      status.textContent = "Estado: Desconectado ❌";
+    });
+
+  } catch (err) {
+    logDebug("Error BLE: " + err);
+    status.textContent = "Estado: Error ❌";
+  }
+}
+
+/* ===== SD ===== */
+function toggleSD() {
+  recordingSD = !recordingSD;
+  btnSD.textContent = recordingSD ? "Rec SD: ON" : "Rec SD: OFF";
+  btnSD.classList.toggle("active", recordingSD);
+  statusSD.textContent = recordingSD ? "SD: Grabando" : "SD: Detenido";
+}
+
+/* ===== BATERÍA ===== */
+function updateBattery(state, volt) {
+  if (state === 0) {
+    batStatus.textContent = `🟢 Batería OK (${volt.toFixed(2)} V)`;
+    batStatus.style.color = "#22c55e";
+  } else if (state === 1) {
+    batStatus.textContent = `🟡 Batería Baja (${volt.toFixed(2)} V)`;
+    batStatus.style.color = "#f59e0b";
+  } else {
+    batStatus.textContent = `🔴 Batería CRÍTICA (${volt.toFixed(2)} V)`;
+    batStatus.style.color = "#ef4444";
+  }
+}
+
+/* ===== DATOS ===== */
+function handleData(e) {
+  const p = new TextDecoder().decode(e.target.value).split(",");
+  if (p.length !== 5) return;
+
+  const t = +p[1], v = +p[2], c = +p[3], bat = +p[4];
+
+  // Actualizar página principal
+  valTemp.textContent = t.toFixed(2) + " °C";
+  valVolt.textContent = v.toFixed(2) + " V";
+  valCorr.textContent = c.toFixed(3) + " A";
+
+  valTempSum.textContent = valTemp.textContent;
+  valVoltSum.textContent = valVolt.textContent;
+  valCorrSum.textContent = valCorr.textContent;
+
+  updateBattery(bat, v);
+  updateCharts(t, v, c);
+}
+
+/* ===== CHARTS ===== */
+const base = {
+  animation:false,
+  scales:{x:{type:'realtime',realtime:{delay:2000,ttl:60000}}}
+};
+
+const chartTemp = new Chart(chartTemp, {
+  type:'line',
+  data:{datasets:[{label:'Temperatura',borderColor:'#ef4444',data:[]}]},
+  options:base
+});
+
+const chartVolt = new Chart(chartVolt, {
+  type:'line',
+  data:{datasets:[{label:'Voltaje',borderColor:'#3b82f6',data:[]}]},
+  options:base
+});
+
+const chartCorr = new Chart(chartCorr, {
+  type:'line',
+  data:{datasets:[{label:'Corriente',borderColor:'#22c55e',data:[]}]},
+  options:base
+});
+
+function updateCharts(t,v,c){
+  const n=Date.now();
+  chartTemp.data.datasets[0].data.push({x:n,y:t});
+  chartVolt.data.datasets[0].data.push({x:n,y:v});
+  chartCorr.data.datasets[0].data.push({x:n,y:c});
+  [chartTemp,chartVolt,chartCorr].forEach(ch=>ch.update('none'));
+}
+</script>
+
+</body>
+</html>
