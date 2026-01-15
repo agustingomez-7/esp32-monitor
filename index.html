@@ -10,7 +10,7 @@
 :root{
   --bg:#0b1220; --panel:#121a2f; --card:#17223b;
   --primary:#3b82f6; --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444;
-  --text:#e5e7eb; --muted:#94a3b8; --border:#1e293b;
+  --text:#ffffff; --muted:#94a3b8; --border:#1e293b;
 }
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,Segoe UI,sans-serif;background:radial-gradient(circle at top,#0f172a,#020617);color:var(--text);}
@@ -23,6 +23,7 @@ button{border:none;border-radius:10px;padding:10px 18px;font-weight:600;cursor:p
 #btnCSV{background:linear-gradient(135deg,#06bd3d,#06bd3d); color:white;}
 #btnResetZoom{background:linear-gradient(135deg,hwb(59 1% 25%),hwb(59 1% 25%)); color:white;}
 #btnSD{background:linear-gradient(136deg,#fb2424,#b45309); color:white;}
+#btnClearSD{background:linear-gradient(135deg,#3b82f6,#2563eb); color:white;}
 
 #status{margin-left:12px;font-weight:600;padding:6px 12px;border-radius:10px;background:var(--panel);}
 .status-connected{
@@ -31,7 +32,7 @@ button{border:none;border-radius:10px;padding:10px 18px;font-weight:600;cursor:p
   box-shadow: 0 0 0 2px rgba(3, 199, 75, 0.35),
               0 0 18px rgba(3, 199, 75, 0.45);
 }
-.tabs{display:flex; gap:6px; margin-top:16px;}
+.tabs{display:flex; gap:6px; margin-top:16px; flex-wrap: wrap;}
 .tab{padding:8px 16px;border-radius:10px;background:var(--panel);cursor:pointer;font-weight:600;}
 .tab.active{background:var(--primary); color:white;}
 .tabContent{display:none; margin-top:16px;}
@@ -51,6 +52,12 @@ canvas{background:rgba(255,255,255,0.05);border:1px solid var(--border);border-r
 input.sliderX{-webkit-appearance: none;width: 100%;height: 6px;border-radius: 5px;background: rgba(148,163,184,0.3);outline: none;margin-top:12px;}
 input.sliderX::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;width: 14px;height: 14px;border-radius: 50%;background: var(--primary);cursor: pointer;}
 #debug{margin-top:16px;background:#020617;border:1px solid var(--border);border-radius:12px;padding:12px;height:140px;overflow-y:auto;font-family:monospace;font-size:12px;}
+#recIndicator { display: inline-flex; align-items: center; gap:25px; font-size:15px; justify-content:center; width:100%; margin-top:4px;}
+.rec-dot{font-weight:800;color:inherit; animation:inherit;}
+.rec-time{font-weight:600;color:var(--text); min-width:40px; text-align:center;}
+@keyframes blink {0% { opacity: 1; } 50% { opacity: 0.25; } 100% { opacity: 1; }}
+.rec-on{color:white;background:#dc2626;box-shadow:0 0 10px rgba(220,38,38,.9);animation: blink 1s infinite;padding: 2px 6px;border-radius: 4px;font-weight:800;}
+.rec-off{color:#64748b;background:#020617;border:1px solid #1e293b;padding: 6px 14px;border-radius:12px;font-weight:800;}
 
 
 /* MOBILE OPTIMIZATION  */
@@ -200,7 +207,6 @@ input.sliderX::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;wi
 }
 
 
-
 </style>
 </head>
 <body>
@@ -214,11 +220,10 @@ input.sliderX::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;wi
   <button id="btnResetZoom">Reset Zoom</button>
   <span id="status">Estado: Desconectado</span>
   <span id="recIndicator" class="rec-off">
-  <span class="rec-dot">● REC</span>
-  <span class="rec-time">00:00</span>
-</span>
-
-
+    <span class="rec-dot">● REC</span>
+    <span class="rec-time">00:00</span>
+  </span>
+</div>
 
 <div class="tabs">
   <div class="tab active" data-tab="all">Todos</div>
@@ -272,28 +277,25 @@ input.sliderX::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;wi
 <div id="bat" class="tabContent">
   <div class="value"><h3>Batería</h3><p class="bat" id="valBat">--</p></div>
 </div>
-</div>
-</main>
 
 <script>
+// ================== Variables ==================
 const recIndicator = document.getElementById("recIndicator");
-let device=null, characteristic=null, recordingSD=false;
-const dataCSV=[], dataTempHist=[], dataVoltHist=[], dataCorrHist=[];
-const dataTemp=[], dataVolt=[], dataCorr=[];
+let device=null, characteristicRX=null, characteristicTX=null;
+let recordingSD=false, startTime=null, timerInterval=null;
+const dataCSV=[], dataTemp=[], dataVolt=[], dataCorr=[];
+const dataTempHist=[], dataVoltHist=[], dataCorrHist=[];
 const MAX_POINTS=50;
 let autoScrollTemp=true, autoScrollVolt=true, autoScrollCorr=true;
-let characteristicRX = null; // notify ESP32 -> HTML
-let characteristicTX = null; // write HTML -> ESP32
 
-
+// Elementos HTML
 const btnConnect=document.getElementById('btnConnect');
 const btnCSV=document.getElementById('btnCSV');
 const btnSD=document.getElementById('btnSD');
+const btnClearSD=document.getElementById('btnClearSD');
 const btnResetZoom=document.getElementById('btnResetZoom');
 const status=document.getElementById('status');
 const debug=document.getElementById('debug');
-const btnClearSD = document.getElementById('btnClearSD');
-
 
 const valTempAll=document.getElementById('valTempAll');
 const valVoltAll=document.getElementById('valVoltAll');
@@ -321,51 +323,31 @@ const sliders={
   corr: document.querySelector('#corr .sliderX')
 };
 
-function log(msg){
-  debug.textContent += msg + "\n";
-  debug.scrollTop = debug.scrollHeight;
-}
+// ================== Funciones ==================
+function log(msg){ debug.textContent += msg + "\n"; debug.scrollTop=debug.scrollHeight; }
 
+// Tabs
 document.querySelectorAll('.tab').forEach(tab=>{
-  tab.onclick = ()=>{
+  tab.onclick=()=>{
     document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
     tab.classList.add('active');
     document.querySelectorAll('.tabContent').forEach(c=>c.classList.toggle('active', c.id===tab.dataset.tab));
   }
 });
 
+// Crear charts
 function crearChart(canvas,label,color){
   return new Chart(canvas,{
     type:'line',
-    data:{
-      labels:[],
-      datasets:[{
-        label,
-        data:[],
-        borderColor:color,
-        backgroundColor:'rgba(255,255,255,0.06)',
-        fill:true,
-        tension:0.4,
-        cubicInterpolationMode:'monotone',
-        pointRadius:4,
-        pointHoverRadius:6,
-        borderWidth:4
-      }]
-    },
+    data:{labels:[], datasets:[{label,data:[],borderColor:color,backgroundColor:'rgba(255,255,255,0.06)',fill:true,tension:0.4,cubicInterpolationMode:'monotone',pointRadius:4,pointHoverRadius:6,borderWidth:4}]},
     options:{
       animation:{duration:300,easing:'linear'},
       responsive:true,
       plugins:{
         legend:{labels:{color:'#e5e7eb'}},
-        zoom:{
-          pan:{enabled:true,mode:'x'},
-          zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'}
-        }
+        zoom:{pan:{enabled:true,mode:'x'}, zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'}}
       },
-      scales:{
-        x:{grid:{color:'rgba(148,163,184,0.08)'},ticks:{color:'#94a3b8'}},
-        y:{grid:{color:'rgba(148,163,184,0.08)'},ticks:{color:'#94a3b8'}, min:0} // eje Y empieza en 0
-      }
+      scales:{x:{grid:{color:'rgba(148,163,184,0.08)'},ticks:{color:'#94a3b8'}}, y:{grid:{color:'rgba(148,163,184,0.08)'},ticks:{color:'#94a3b8'},min:0}}
     }
   });
 }
@@ -374,57 +356,42 @@ const chartTemp=crearChart(document.getElementById('chartTemp'),'Temperatura (°
 const chartVolt=crearChart(document.getElementById('chartVolt'),'Voltaje (V)','#3b82f6');
 const chartCorr=crearChart(document.getElementById('chartCorr'),'Corriente (A)','#22c55e');
 
-// Detectar zoom o pan para desactivar autoScroll
+// Detectar zoom/pan para desactivar autoScroll
 [chartTemp, chartVolt, chartCorr].forEach(chart=>{
   chart.options.plugins.zoom.onZoom = ()=>{ if(chart===chartTemp) autoScrollTemp=false; if(chart===chartVolt) autoScrollVolt=false; if(chart===chartCorr) autoScrollCorr=false; };
   chart.options.plugins.zoom.onPan = ()=>{ if(chart===chartTemp) autoScrollTemp=false; if(chart===chartVolt) autoScrollVolt=false; if(chart===chartCorr) autoScrollCorr=false; };
 });
 
+// Actualizar grafico
 function actualizarGrafico(chart,dataHist,slider,autoScrollFlag){
   const total = dataHist.length;
   const start = autoScrollFlag ? Math.max(0,total-MAX_POINTS) : parseInt(slider.value)||0;
   const visibleData = dataHist.slice(start,start+MAX_POINTS);
-
   chart.data.labels = visibleData.map(d=>d.time);
   chart.data.datasets[0].data = visibleData.map(d=>d.value);
-  chart.data.datasets[0].pointRadius = visibleData.map((d,i)=>{
-    if(i===0) return 4;
-    return d.value !== visibleData[i-1].value ? 4 : 0;
-  });
-  chart.data.datasets[0].pointHoverRadius = visibleData.map((d,i)=>{
-    if(i===0) return 6;
-    return d.value !== visibleData[i-1].value ? 6 : 0;
-  });
-
-  // Eje Y mínimo en 0
-  chart.options.scales.y.min = 0;
-
   chart.update('none');
-
   slider.max = Math.max(0,total-MAX_POINTS);
-  if(autoScrollFlag) slider.value = slider.max;
+  if(autoScrollFlag) slider.value=slider.max;
 }
 
-function agregarDato(chart, dataHist, value, now, slider, autoScrollFlag, tipo){
+function agregarDato(chart,dataHist,value,now,slider,autoScrollFlag,tipo){
   if(isNaN(value)) return;
   let umbral=0;
   if(tipo==='temp') umbral=3;
   else if(tipo==='volt'||tipo==='corr') umbral=0.1;
   const lastPoint = dataHist.length ? dataHist[dataHist.length-1].value : value;
-  const cambioRelevante = Math.abs(value - lastPoint) >= umbral;
-  const valorParaGrafico = cambioRelevante ? value : lastPoint;
-  dataHist.push({time:now,value:valorParaGrafico, mostrarPunto:cambioRelevante});
-  if(dataHist.length > MAX_POINTS*5) dataHist.splice(0,dataHist.length-MAX_POINTS*5);
-
+  const valorParaGrafico = Math.abs(value-lastPoint)>=umbral ? value : lastPoint;
+  dataHist.push({time:now,value:valorParaGrafico});
+  if(dataHist.length>MAX_POINTS*5) dataHist.splice(0,dataHist.length-MAX_POINTS*5);
   actualizarGrafico(chart,dataHist,slider,autoScrollFlag);
 }
 
-/* SLIDERS */
-sliders.temp.addEventListener('input',()=>{autoScrollTemp=false;actualizarGrafico(chartTemp,dataTempHist,sliders.temp,false)});
-sliders.volt.addEventListener('input',()=>{autoScrollVolt=false;actualizarGrafico(chartVolt,dataVoltHist,sliders.volt,false)});
-sliders.corr.addEventListener('input',()=>{autoScrollCorr=false;actualizarGrafico(chartCorr,dataCorrHist,sliders.corr,false)});
+// Sliders
+sliders.temp.addEventListener('input',()=>{autoScrollTemp=false; actualizarGrafico(chartTemp,dataTempHist,sliders.temp,false);});
+sliders.volt.addEventListener('input',()=>{autoScrollVolt=false; actualizarGrafico(chartVolt,dataVoltHist,sliders.volt,false);});
+sliders.corr.addEventListener('input',()=>{autoScrollCorr=false; actualizarGrafico(chartCorr,dataCorrHist,sliders.corr,false);});
 
-/* RESET ZOOM */
+// Reset zoom
 btnResetZoom.onclick=()=>{
   chartTemp.resetZoom(); chartVolt.resetZoom(); chartCorr.resetZoom();
   autoScrollTemp=true; autoScrollVolt=true; autoScrollCorr=true;
@@ -433,203 +400,105 @@ btnResetZoom.onclick=()=>{
   actualizarGrafico(chartCorr,dataCorrHist,sliders.corr,true);
 };
 
-/* BLE */
-btnConnect.onclick = async () => {
-  try {
+// BLE
+btnConnect.onclick = async ()=>{
+  try{
     log("Buscando ESP32...");
-
-    device = await navigator.bluetooth.requestDevice({
-      filters: [{ name: 'ESP32-C3-Mini' }],
-      optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
-    });
-
+    device = await navigator.bluetooth.requestDevice({filters:[{name:'ESP32-C3-Mini'}],optionalServices:['6e400001-b5a3-f393-e0a9-e50e24dcca9e']});
     const server = await device.gatt.connect();
-    const service = await server.getPrimaryService(
-      '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
-    );
-
-    // RX = notify (ESP32 -> HTML)
-    characteristicRX = await service.getCharacteristic(
-      '6e400003-b5a3-f393-e0a9-e50e24dcca9e'
-    );
-
-    // TX = write (HTML -> ESP32)
-    characteristicTX = await service.getCharacteristic(
-      '6e400002-b5a3-f393-e0a9-e50e24dcca9e'
-    );
-
+    const service = await server.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
+    characteristicRX = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
+    characteristicTX = await service.getCharacteristic('6e400002-b5a3-f393-e0a9-e50e24dcca9e');
     await characteristicRX.startNotifications();
-    characteristicRX.addEventListener(
-      'characteristicvaluechanged',
-      handleData
-    );
-
-    status.textContent = "Conectado";
-    status.classList.add("status-connected");
+    characteristicRX.addEventListener('characteristicvaluechanged', handleData);
+    status.textContent="Conectado"; status.classList.add("status-connected");
     log("✅ Conectado correctamente");
-
-    enviarFechaHora();   // 👈 NUEVO (1 sola vez)
-
-  } catch (e) {
-    status.textContent = "Error";
-    log("❌ Error BLE: " + e);
-  }
+    enviarFechaHora();
+  }catch(e){ status.textContent="Error"; log("❌ Error BLE: "+e);}
 };
 
-
-
-
-
-function enviarFechaHora() {
-  if (!characteristicTX) return;
-
-  const now = new Date();
-
-  const fecha =
-    now.getFullYear() + "-" +
-    String(now.getMonth() + 1).padStart(2, '0') + "-" +
-    String(now.getDate()).padStart(2, '0');
-
-  const hora =
-    String(now.getHours()).padStart(2, '0') + ":" +
-    String(now.getMinutes()).padStart(2, '0') + ":" +
-    String(now.getSeconds()).padStart(2, '0');
-
-  const cmd = "TIME," + fecha + "," + hora;
-
-  characteristicTX.writeValueWithoutResponse(
-    new TextEncoder().encode(cmd)
-  );
-
-  log("🕒 Hora enviada al ESP32: " + fecha + " " + hora);
+function enviarFechaHora(){
+  if(!characteristicTX) return;
+  const now=new Date();
+  const fecha=`${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}`;
+  const hora=`${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
+  characteristicTX.writeValueWithoutResponse(new TextEncoder().encode(`TIME:${fecha} ${hora}`));
 }
 
-
-/* CSV */
-btnCSV.onclick=()=>{
-  if(!dataCSV.length) return alert("No hay datos");
-  let csv="timestamp,temp,volt,corr,bat\n"; 
-  dataCSV.forEach(r=>csv+=r.join(",")+"\n");
-  const a=document.createElement('a'); 
-  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); 
-  a.download="datos.csv"; 
-  a.click();
-};
-
-/* SD */
-let startTime = null;
-let timerInterval = null;
-
-btnSD.onclick = async () => {
-  if (!characteristicTX) return alert("ESP32 no conectado");
-
-  recordingSD = !recordingSD;
-  const cmd = recordingSD ? "START" : "STOP";
-
-  try {
-    await characteristicTX.writeValueWithoutResponse(
-      new TextEncoder().encode(cmd)
-    );
-
-    btnSD.textContent = recordingSD ? "Parar SD" : "Grabar SD";
-    log("Comando SD: " + cmd);
-
-    const recDot = document.querySelector("#recIndicator .rec-dot");
-    const recTime = document.querySelector("#recIndicator .rec-time");
-
-    recDot.className = recordingSD ? "rec-dot rec-on" : "rec-dot rec-off";
-
-    if (recordingSD) {
-      startTime = Date.now();
-      recTime.textContent = "00:00";
-
-      timerInterval = setInterval(() => {
-        const elapsed = Date.now() - startTime;
-        const minutes = String(Math.floor(elapsed / 60000)).padStart(2,'0');
-        const seconds = String(Math.floor((elapsed % 60000)/1000)).padStart(2,'0');
-        recTime.textContent = `${minutes}:${seconds}`;
-      }, 1000);
-
-    } else {
-      clearInterval(timerInterval);
-      recTime.textContent = "";
-    }
-
-  } catch (e) {
-    log("❌ Error enviando comando SD: " + e);
-  }
-};
-
-
-
-
-btnClearSD.onclick = async () => {
-  if (!characteristicTX) return alert("ESP32 no conectado");
-  try {
-    await characteristicTX.writeValueWithoutResponse(new TextEncoder().encode("CLEAR"));
-    log("Comando SD: CLEAR");
-  } catch (e) {
-    log("❌ Error borrando SD: " + e);
-  }
-};
-
-
-
-
-/* HANDLE DATA */
+// ================== HandleData ==================
 function handleData(e){
-  const t = new TextDecoder().decode(e.target.value).trim();
+  const t=new TextDecoder().decode(e.target.value).trim();
   log("RX: "+t);
-
-  const p = t.split(",");
+  const p=t.split(",");
   if(p.length<5) return;
 
-  const temp = parseFloat(p[1]);
-  const volt = parseFloat(p[2]);
-  const corr = parseFloat(p[3]);
-  const bat = p[4]==="0"?"OK":p[4]==="1"?"BAJA":"CRITICA";
-  const now = new Date().toLocaleTimeString();
+  const temp=parseFloat(p[1]);
+  const volt=parseFloat(p[2]);
+  const corr=parseFloat(p[3]);
+  const bat=p[4]==="0"?"OK":p[4]==="1"?"BAJA":"CRITICA";
+  const now=new Date().toLocaleTimeString();
 
-  valTempAll.textContent = isNaN(temp) ? "-- °C" : temp.toFixed(2)+" °C";
-  valVoltAll.textContent = isNaN(volt) ? "-- V" : volt.toFixed(2)+" V";
-  valCorrAll.textContent = isNaN(corr) ? "-- A" : corr.toFixed(2)+" A";
-  valBatAll.textContent = bat;
+  valTempAll.textContent=isNaN(temp)?"-- °C":temp.toFixed(2)+" °C";
+  valVoltAll.textContent=isNaN(volt)?"-- V":volt.toFixed(2)+" V";
+  valCorrAll.textContent=isNaN(corr)?"-- A":corr.toFixed(2)+" A";
+  valBatAll.textContent=bat;
 
-  valTemp.textContent = valTempAll.textContent;
-  valVolt.textContent = valVoltAll.textContent;
-  valCorr.textContent = valCorrAll.textContent;
-  valBat.textContent = bat;
+  valTemp.textContent=valTempAll.textContent;
+  valVolt.textContent=valVoltAll.textContent;
+  valCorr.textContent=valCorrAll.textContent;
+  valBat.textContent=bat;
 
-  if(!isNaN(temp)){ dataTemp.push(temp); if(dataTemp.length>50) dataTemp.shift(); }
-  if(!isNaN(volt)){ dataVolt.push(volt); if(dataVolt.length>50) dataVolt.shift(); }
-  if(!isNaN(corr)){ dataCorr.push(corr); if(dataCorr.length>50) dataCorr.shift(); }
+  if(!isNaN(temp)){ dataTemp.push(temp); if(dataTemp.length>MAX_POINTS) dataTemp.shift(); }
+  if(!isNaN(volt)){ dataVolt.push(volt); if(dataVolt.length>MAX_POINTS) dataVolt.shift(); }
+  if(!isNaN(corr)){ dataCorr.push(corr); if(dataCorr.length>MAX_POINTS) dataCorr.shift(); }
 
-  if(dataTemp.length){
-    const avg = dataTemp.reduce((a,b)=>a+b,0)/dataTemp.length;
-    avgTemp.textContent = avg.toFixed(2);
-    maxTemp.textContent = Math.max(...dataTemp).toFixed(2);
-    minTemp.textContent = Math.min(...dataTemp).toFixed(2);
-  }
-  if(dataVolt.length){
-    const avg = dataVolt.reduce((a,b)=>a+b,0)/dataVolt.length;
-    avgVolt.textContent = avg.toFixed(2);
-    maxVolt.textContent = Math.max(...dataVolt).toFixed(2);
-    minVolt.textContent = Math.min(...dataVolt).toFixed(2);
-  }
-  if(dataCorr.length){
-    const avg = dataCorr.reduce((a,b)=>a+b,0)/dataCorr.length;
-    avgCorr.textContent = avg.toFixed(2);
-    maxCorr.textContent = Math.max(...dataCorr).toFixed(2);
-    minCorr.textContent = Math.min(...dataCorr).toFixed(2);
-  }
+  if(dataTemp.length){ const avg=dataTemp.reduce((a,b)=>a+b,0)/dataTemp.length; avgTemp.textContent=avg.toFixed(2); maxTemp.textContent=Math.max(...dataTemp).toFixed(2); minTemp.textContent=Math.min(...dataTemp).toFixed(2);}
+  if(dataVolt.length){ const avg=dataVolt.reduce((a,b)=>a+b,0)/dataVolt.length; avgVolt.textContent=avg.toFixed(2); maxVolt.textContent=Math.max(...dataVolt).toFixed(2); minVolt.textContent=Math.min(...dataVolt).toFixed(2);}
+  if(dataCorr.length){ const avg=dataCorr.reduce((a,b)=>a+b,0)/dataCorr.length; avgCorr.textContent=avg.toFixed(2); maxCorr.textContent=Math.max(...dataCorr).toFixed(2); minCorr.textContent=Math.min(...dataCorr).toFixed(2);}
 
   dataCSV.push([now,temp,volt,corr,bat]);
 
-  if(!isNaN(temp)) agregarDato(chartTemp, dataTempHist, temp, now, sliders.temp, autoScrollTemp, 'temp');
-  if(!isNaN(volt)) agregarDato(chartVolt, dataVoltHist, volt, now, sliders.volt, autoScrollVolt, 'volt');
-  if(!isNaN(corr)) agregarDato(chartCorr, dataCorrHist, corr, now, sliders.corr, autoScrollCorr, 'corr');
+  if(!isNaN(temp)) agregarDato(chartTemp,dataTempHist,temp,now,sliders.temp,autoScrollTemp,'temp');
+  if(!isNaN(volt)) agregarDato(chartVolt,dataVoltHist,volt,now,sliders.volt,autoScrollVolt,'volt');
+  if(!isNaN(corr)) agregarDato(chartCorr,dataCorrHist,corr,now,sliders.corr,autoScrollCorr,'corr');
 }
-</script>
 
+// ================== Botones SD ==================
+btnSD.onclick = async () => {
+  if(!characteristicTX) return alert("ESP32 no conectado");
+  recordingSD=!recordingSD;
+  const cmd=recordingSD?"START":"STOP";
+  try{
+    await characteristicTX.writeValueWithoutResponse(new TextEncoder().encode(cmd));
+    log("Comando SD enviado: "+cmd);
+
+    const recDot=document.querySelector("#recIndicator .rec-dot");
+    const recTime=document.querySelector("#recIndicator .rec-time");
+    recDot.className=recordingSD?"rec-dot rec-on":"rec-dot rec-off";
+
+    if(recordingSD){
+      startTime=Date.now(); recTime.textContent="00:00";
+      timerInterval=setInterval(()=>{
+        const elapsed=Date.now()-startTime;
+        const minutes=String(Math.floor(elapsed/60000)).padStart(2,'0');
+        const seconds=String(Math.floor((elapsed%60000)/1000)).padStart(2,'0');
+        recTime.textContent=`${minutes}:${seconds}`;
+      },1000);
+    }else{
+      clearInterval(timerInterval);
+      recTime.textContent="";
+    }
+  }catch(e){ log("❌ Error enviando comando SD: "+e); }
+};
+
+btnClearSD.onclick = async () => {
+  if(!characteristicTX) return alert("ESP32 no conectado");
+  try{
+    await characteristicTX.writeValueWithoutResponse(new TextEncoder().encode("CLEAR"));
+    log("Comando SD enviado: CLEAR");
+  }catch(e){ log("❌ Error borrando SD: "+e); }
+};
+
+</script>
 </body>
 </html>
