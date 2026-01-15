@@ -1,337 +1,532 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>ESP32 BLE Monitor</title>
-
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ESP32 BLE Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <style>
-:root {
-  --bg-main: #0b1220;
-  --bg-panel: #121a2f;
-  --bg-card: #17223b;
-  --primary: #3b82f6;
-  --success: #22c55e;
-  --danger: #ef4444;
-  --warning: #f59e0b;
-  --text-main: #e5e7eb;
-  --text-muted: #94a3b8;
-  --border: #1e293b;
+:root{
+  --bg:#0b1220; --panel:#121a2f; --card:#17223b;
+  --primary:#3b82f6; --ok:#22c55e; --warn:#f59e0b; --danger:#ef4444;
+  --text:#e5e7eb; --muted:#94a3b8; --border:#1e293b;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:system-ui,Segoe UI,sans-serif;background:radial-gradient(circle at top,#0f172a,#020617);color:var(--text);}
+header{padding:18px 24px;border-bottom:1px solid var(--border);background:#020617;}
+header h1{margin:0;font-size:20px;font-weight:600;}
+main{padding:24px;max-width:1000px;margin:auto;}
+.card{background:linear-gradient(180deg,var(--card),var(--panel));border:1px solid var(--border);border-radius:16px;padding:22px;box-shadow:0 20px 40px rgba(0,0,0,.35);}
+button{border:none;border-radius:10px;padding:10px 18px;font-weight:600;cursor:pointer;margin-right:6px;}
+#btnConnect{background:linear-gradient(135deg,var(--primary),#2563eb); color:white;}
+#btnCSV{background:linear-gradient(135deg,#10b981,#059669); color:white;}
+#btnSD{background:linear-gradient(135deg,#fbbf24,#b45309); color:white;}
+#btnResetZoom{background:linear-gradient(135deg,#f472b6,#d946ef); color:white;}
+#status{margin-left:12px;font-weight:600;padding:6px 12px;border-radius:10px;background:var(--panel);}
+.status-connected{background:var(--ok);color:#000;}
+.tabs{display:flex; gap:6px; margin-top:16px;}
+.tab{padding:8px 16px;border-radius:10px;background:var(--panel);cursor:pointer;font-weight:600;}
+.tab.active{background:var(--primary); color:white;}
+.tabContent{display:none; margin-top:16px;}
+.tabContent.active{display:block;}
+.value{background:#020617;border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;}
+.value h3{margin:0; font-size:14px; color:var(--muted);}
+.value p{margin:6px 0 0; font-size:28px; font-weight:700;}
+.temp{color:var(--danger)}
+.volt{color:var(--primary)}
+.corr{color:var(--ok)}
+.bat{color:var(--warn)}
+.stats{display:flex; gap:12px; margin-bottom:12px;}
+.statBox{background:#121a2f;border:1px solid var(--border);border-radius:12px;padding:12px;flex:1;text-align:center;}
+.statBox h4{margin:0; font-size:12px; color:var(--muted);}
+.statBox p{margin:4px 0 0; font-size:16px; font-weight:600;}
+canvas{background:rgba(255,255,255,0.05);border:1px solid var(--border);border-radius:12px;padding:8px;}
+input.sliderX{-webkit-appearance: none;width: 100%;height: 6px;border-radius: 5px;background: rgba(148,163,184,0.3);outline: none;margin-top:12px;}
+input.sliderX::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;width: 14px;height: 14px;border-radius: 50%;background: var(--primary);cursor: pointer;}
+#debug{margin-top:16px;background:#020617;border:1px solid var(--border);border-radius:12px;padding:12px;height:140px;overflow-y:auto;font-family:monospace;font-size:12px;}
+
+
+/* =========================
+   MOBILE OPTIMIZATION
+   ========================= */
+@media (max-width: 768px) {
+
+  header {
+    padding: 12px 16px;
+  }
+
+  header h1 {
+    font-size: 16px;
+    text-align: center;
+  }
+
+  main {
+    padding: 12px;
+    max-width: 100%;
+  }
+
+  .card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  /* ===== BOTONES ===== */
+  .card > button,
+  .card > div button {
+    width: 100%;
+    margin: 4px 0;
+    padding: 12px;
+    font-size: 14px;
+  }
+
+  #status {
+    display: block;
+    margin: 8px 0 0;
+    text-align: center;
+  }
+
+  /* ===== TABS ===== */
+  .tabs {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+
+  .tab {
+    padding: 8px;
+    font-size: 12px;
+    text-align: center;
+  }
+
+  /* ===== VALUES ===== */
+  .value {
+    padding: 12px;
+  }
+
+  .value h3 {
+    font-size: 12px;
+  }
+
+  .value p {
+    font-size: 22px;
+  }
+
+  /* ===== STATS ===== */
+  .stats {
+    gap: 8px;
+  }
+
+  .statBox {
+    padding: 10px;
+  }
+
+  .statBox p {
+    font-size: 14px;
+  }
+
+  /* ===== CANVAS ===== */
+  canvas {
+    width: 100% !important;
+    height: 220px !important;
+  }
+
+  /* ===== DEBUG ===== */
+  #debug {
+    height: 110px;
+    font-size: 11px;
+  }
 }
 
-* { box-sizing: border-box; }
-body {
-  margin: 0;
-  font-family: "Segoe UI", system-ui, sans-serif;
-  background: radial-gradient(circle at top, #0f172a, #020617);
-  color: var(--text-main);
-}
 
-header {
-  padding: 20px 24px;
-  background: #020617;
-  border-bottom: 1px solid var(--border);
-}
 
-header h1 { margin: 0; font-size: 20px; font-weight: 600; }
-
-nav {
-  display: flex;
-  gap: 10px;
-  padding: 12px 20px;
-  background: var(--bg-panel);
-  border-bottom: 1px solid var(--border);
-}
-
-nav button {
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--text-muted);
-  padding: 10px 16px;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-nav button:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-main { padding: 24px; }
-.page { display: none; }
-.page.active { display: block; }
-
-.card {
-  background: linear-gradient(180deg, var(--bg-card), var(--bg-panel));
-  border-radius: 16px;
-  padding: 22px;
-  border: 1px solid var(--border);
-  box-shadow: 0 20px 40px rgba(0,0,0,.35);
-  margin-bottom: 20px;
-}
-
-.card h2 { margin: 0 0 12px; font-size: 16px; }
-
-.value {
-  font-size: 36px;
-  font-weight: 700;
-}
-
-.value.temp { color: var(--danger); }
-.value.volt { color: var(--primary); }
-.value.corr { color: var(--success); }
-
-#btnConnect {
-  background: linear-gradient(135deg, var(--primary), #2563eb);
-  border: none;
-  color: white;
-  padding: 14px 22px;
-  border-radius: 10px;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-#btnSD {
-  background: linear-gradient(135deg, var(--success), #16a34a);
-  border: none;
-  color: white;
-  padding: 12px 20px;
-  border-radius: 10px;
-  font-weight: 600;
-  margin-top: 10px;
-  cursor: pointer;
-}
-
-#btnSD.active {
-  background: linear-gradient(135deg, #ef4444, #b91c1c);
-}
-
-#status, #statusSD, #batStatus {
-  margin-top: 10px;
-  font-size: 14px;
-  font-weight: 600;
-}
-
-#debug {
-  margin-top: 16px;
-  background: #020617;
-  border-radius: 12px;
-  border: 1px solid var(--border);
-  padding: 12px;
-  height: 140px;
-  overflow-y: auto;
-  font-family: monospace;
-  font-size: 12px;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 20px;
-}
-
-canvas {
-  margin-top: 14px;
-  background: #020617;
-  border-radius: 12px;
-  padding: 10px;
-}
 </style>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
-<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-streaming@2.0.0"></script>
 </head>
-
 <body>
-
-<header>
-  <h1>ESP32 · BLE Industrial Monitor</h1>
-</header>
-
-<nav>
-  <button onclick="showPage('inicio')">Inicio</button>
-  <button onclick="showPage('temp')">Temperatura</button>
-  <button onclick="showPage('volt')">Voltaje</button>
-  <button onclick="showPage('corr')">Corriente</button>
-  <button onclick="showPage('resumen')">Resumen</button>
-</nav>
-
+<header><h1>ESP32 · BLE Dashboard</h1></header>
 <main>
+<div class="card">
+  <button id="btnConnect">Conectar ESP32</button>
+  <button id="btnCSV">Exportar CSV</button>
+  <button id="btnSD">Grabar SD</button>
+  <button id="btnClearSD">Borrar SD</button>
+  <button id="btnResetZoom">Reset Zoom</button>
+  <span id="status">Estado: Desconectado</span>
 
-<section id="inicio" class="page active">
-  <div class="card">
-    <h2>Conexión BLE</h2>
-    <button id="btnConnect">Conectar ESP32</button>
-    <div id="status">Estado: Desconectado</div>
+<div class="tabs">
+  <div class="tab active" data-tab="all">Todos</div>
+  <div class="tab" data-tab="temp">Temperatura</div>
+  <div class="tab" data-tab="volt">Voltaje</div>
+  <div class="tab" data-tab="corr">Corriente</div>
+  <div class="tab" data-tab="bat">Batería</div>
+</div>
 
-    <button id="btnSD">Rec SD: OFF</button>
-    <div id="statusSD">SD: No inicializada</div>
+<div id="all" class="tabContent active">
+  <div class="value"><h3>Temperatura</h3><p class="temp" id="valTempAll">-- °C</p></div>
+  <div class="value"><h3>Voltaje</h3><p class="volt" id="valVoltAll">-- V</p></div>
+  <div class="value"><h3>Corriente</h3><p class="corr" id="valCorrAll">-- A</p></div>
+  <div class="value"><h3>Batería</h3><p class="bat" id="valBatAll">--</p></div>
+  <div id="debug"></div>
+</div>
 
-    <div id="batStatus">🪫 Batería: --</div>
-
-    <div id="debug"></div>
+<div id="temp" class="tabContent">
+  <div class="value"><h3>Temperatura</h3><p class="temp" id="valTemp">-- °C</p></div>
+  <div class="stats">
+    <div class="statBox"><h4>Promedio</h4><p id="avgTemp">--</p></div>
+    <div class="statBox"><h4>Máximo</h4><p id="maxTemp">--</p></div>
+    <div class="statBox"><h4>Mínimo</h4><p id="minTemp">--</p></div>
   </div>
-</section>
+  <canvas id="chartTemp" height="150"></canvas>
+  <input type="range" class="sliderX" min="0" max="0" value="0">
+</div>
 
-<section id="temp" class="page">
-  <div class="card">
-    <h2>Temperatura</h2>
-    <div class="value temp" id="valTemp">-- °C</div>
-    <canvas id="chartTemp"></canvas>
+<div id="volt" class="tabContent">
+  <div class="value"><h3>Voltaje</h3><p class="volt" id="valVolt">-- V</p></div>
+  <div class="stats">
+    <div class="statBox"><h4>Promedio</h4><p id="avgVolt">--</p></div>
+    <div class="statBox"><h4>Máximo</h4><p id="maxVolt">--</p></div>
+    <div class="statBox"><h4>Mínimo</h4><p id="minVolt">--</p></div>
   </div>
-</section>
+  <canvas id="chartVolt" height="150"></canvas>
+  <input type="range" class="sliderX" min="0" max="0" value="0">
+</div>
 
-<section id="volt" class="page">
-  <div class="card">
-    <h2>Voltaje</h2>
-    <div class="value volt" id="valVolt">-- V</div>
-    <canvas id="chartVolt"></canvas>
+<div id="corr" class="tabContent">
+  <div class="value"><h3>Corriente</h3><p class="corr" id="valCorr">-- A</p></div>
+  <div class="stats">
+    <div class="statBox"><h4>Promedio</h4><p id="avgCorr">--</p></div>
+    <div class="statBox"><h4>Máximo</h4><p id="maxCorr">--</p></div>
+    <div class="statBox"><h4>Mínimo</h4><p id="minCorr">--</p></div>
   </div>
-</section>
+  <canvas id="chartCorr" height="150"></canvas>
+  <input type="range" class="sliderX" min="0" max="0" value="0">
+</div>
 
-<section id="corr" class="page">
-  <div class="card">
-    <h2>Corriente</h2>
-    <div class="value corr" id="valCorr">-- A</div>
-    <canvas id="chartCorr"></canvas>
-  </div>
-</section>
-
-<section id="resumen" class="page">
-  <div class="card">
-    <h2>Resumen General</h2>
-    <strong>Temperatura:</strong> <span id="valTempSum">-- °C</span><br>
-    <strong>Voltaje:</strong> <span id="valVoltSum">-- V</span><br>
-    <strong>Corriente:</strong> <span id="valCorrSum">-- A</span>
-  </div>
-</section>
-
+<div id="bat" class="tabContent">
+  <div class="value"><h3>Batería</h3><p class="bat" id="valBat">--</p></div>
+</div>
+</div>
 </main>
 
 <script>
-let device = null;
-let characteristic = null;
-let recordingSD = false;
+let device=null, characteristic=null, recordingSD=false;
+const dataCSV=[], dataTempHist=[], dataVoltHist=[], dataCorrHist=[];
+const dataTemp=[], dataVolt=[], dataCorr=[];
+const MAX_POINTS=50;
+let autoScrollTemp=true, autoScrollVolt=true, autoScrollCorr=true;
+let characteristicRX = null; // notify ESP32 -> HTML
+let characteristicTX = null; // write HTML -> ESP32
 
-btnConnect.onclick = connectBLE;
-btnSD.onclick = toggleSD;
 
-function showPage(id) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById(id).classList.add('active');
-}
+const btnConnect=document.getElementById('btnConnect');
+const btnCSV=document.getElementById('btnCSV');
+const btnSD=document.getElementById('btnSD');
+const btnResetZoom=document.getElementById('btnResetZoom');
+const status=document.getElementById('status');
+const debug=document.getElementById('debug');
+const btnClearSD = document.getElementById('btnClearSD');
 
-function logDebug(m) {
-  debug.textContent += m + "\n";
+
+const valTempAll=document.getElementById('valTempAll');
+const valVoltAll=document.getElementById('valVoltAll');
+const valCorrAll=document.getElementById('valCorrAll');
+const valBatAll=document.getElementById('valBatAll');
+
+const valTemp=document.getElementById('valTemp');
+const valVolt=document.getElementById('valVolt');
+const valCorr=document.getElementById('valCorr');
+const valBat=document.getElementById('valBat');
+
+const avgTemp=document.getElementById('avgTemp');
+const maxTemp=document.getElementById('maxTemp');
+const minTemp=document.getElementById('minTemp');
+const avgVolt=document.getElementById('avgVolt');
+const maxVolt=document.getElementById('maxVolt');
+const minVolt=document.getElementById('minVolt');
+const avgCorr=document.getElementById('avgCorr');
+const maxCorr=document.getElementById('maxCorr');
+const minCorr=document.getElementById('minCorr');
+
+const sliders={
+  temp: document.querySelector('#temp .sliderX'),
+  volt: document.querySelector('#volt .sliderX'),
+  corr: document.querySelector('#corr .sliderX')
+};
+
+function log(msg){
+  debug.textContent += msg + "\n";
   debug.scrollTop = debug.scrollHeight;
 }
 
-/* ===== BLE ===== */
-async function connectBLE() {
+document.querySelectorAll('.tab').forEach(tab=>{
+  tab.onclick = ()=>{
+    document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+    tab.classList.add('active');
+    document.querySelectorAll('.tabContent').forEach(c=>c.classList.toggle('active', c.id===tab.dataset.tab));
+  }
+});
+
+function crearChart(canvas,label,color){
+  return new Chart(canvas,{
+    type:'line',
+    data:{
+      labels:[],
+      datasets:[{
+        label,
+        data:[],
+        borderColor:color,
+        backgroundColor:'rgba(255,255,255,0.06)',
+        fill:true,
+        tension:0.4,
+        cubicInterpolationMode:'monotone',
+        pointRadius:4,
+        pointHoverRadius:6,
+        borderWidth:4
+      }]
+    },
+    options:{
+      animation:{duration:300,easing:'linear'},
+      responsive:true,
+      plugins:{
+        legend:{labels:{color:'#e5e7eb'}},
+        zoom:{
+          pan:{enabled:true,mode:'x'},
+          zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'}
+        }
+      },
+      scales:{
+        x:{grid:{color:'rgba(148,163,184,0.08)'},ticks:{color:'#94a3b8'}},
+        y:{grid:{color:'rgba(148,163,184,0.08)'},ticks:{color:'#94a3b8'}, min:0} // eje Y empieza en 0
+      }
+    }
+  });
+}
+
+const chartTemp=crearChart(document.getElementById('chartTemp'),'Temperatura (°C)','#ef4444');
+const chartVolt=crearChart(document.getElementById('chartVolt'),'Voltaje (V)','#3b82f6');
+const chartCorr=crearChart(document.getElementById('chartCorr'),'Corriente (A)','#22c55e');
+
+// Detectar zoom o pan para desactivar autoScroll
+[chartTemp, chartVolt, chartCorr].forEach(chart=>{
+  chart.options.plugins.zoom.onZoom = ()=>{ if(chart===chartTemp) autoScrollTemp=false; if(chart===chartVolt) autoScrollVolt=false; if(chart===chartCorr) autoScrollCorr=false; };
+  chart.options.plugins.zoom.onPan = ()=>{ if(chart===chartTemp) autoScrollTemp=false; if(chart===chartVolt) autoScrollVolt=false; if(chart===chartCorr) autoScrollCorr=false; };
+});
+
+function actualizarGrafico(chart,dataHist,slider,autoScrollFlag){
+  const total = dataHist.length;
+  const start = autoScrollFlag ? Math.max(0,total-MAX_POINTS) : parseInt(slider.value)||0;
+  const visibleData = dataHist.slice(start,start+MAX_POINTS);
+
+  chart.data.labels = visibleData.map(d=>d.time);
+  chart.data.datasets[0].data = visibleData.map(d=>d.value);
+  chart.data.datasets[0].pointRadius = visibleData.map((d,i)=>{
+    if(i===0) return 4;
+    return d.value !== visibleData[i-1].value ? 4 : 0;
+  });
+  chart.data.datasets[0].pointHoverRadius = visibleData.map((d,i)=>{
+    if(i===0) return 6;
+    return d.value !== visibleData[i-1].value ? 6 : 0;
+  });
+
+  // Eje Y mínimo en 0
+  chart.options.scales.y.min = 0;
+
+  chart.update('none');
+
+  slider.max = Math.max(0,total-MAX_POINTS);
+  if(autoScrollFlag) slider.value = slider.max;
+}
+
+function agregarDato(chart, dataHist, value, now, slider, autoScrollFlag, tipo){
+  if(isNaN(value)) return;
+  let umbral=0;
+  if(tipo==='temp') umbral=3;
+  else if(tipo==='volt'||tipo==='corr') umbral=0.1;
+  const lastPoint = dataHist.length ? dataHist[dataHist.length-1].value : value;
+  const cambioRelevante = Math.abs(value - lastPoint) >= umbral;
+  const valorParaGrafico = cambioRelevante ? value : lastPoint;
+  dataHist.push({time:now,value:valorParaGrafico, mostrarPunto:cambioRelevante});
+  if(dataHist.length > MAX_POINTS*5) dataHist.splice(0,dataHist.length-MAX_POINTS*5);
+
+  actualizarGrafico(chart,dataHist,slider,autoScrollFlag);
+}
+
+/* SLIDERS */
+sliders.temp.addEventListener('input',()=>{autoScrollTemp=false;actualizarGrafico(chartTemp,dataTempHist,sliders.temp,false)});
+sliders.volt.addEventListener('input',()=>{autoScrollVolt=false;actualizarGrafico(chartVolt,dataVoltHist,sliders.volt,false)});
+sliders.corr.addEventListener('input',()=>{autoScrollCorr=false;actualizarGrafico(chartCorr,dataCorrHist,sliders.corr,false)});
+
+/* RESET ZOOM */
+btnResetZoom.onclick=()=>{
+  chartTemp.resetZoom(); chartVolt.resetZoom(); chartCorr.resetZoom();
+  autoScrollTemp=true; autoScrollVolt=true; autoScrollCorr=true;
+  actualizarGrafico(chartTemp,dataTempHist,sliders.temp,true);
+  actualizarGrafico(chartVolt,dataVoltHist,sliders.volt,true);
+  actualizarGrafico(chartCorr,dataCorrHist,sliders.corr,true);
+};
+
+/* BLE */
+btnConnect.onclick = async () => {
   try {
-    logDebug("Solicitando dispositivo BLE...");
+    log("Buscando ESP32...");
+
     device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
+      filters: [{ name: 'ESP32-C3-Mini' }],
       optionalServices: ['6e400001-b5a3-f393-e0a9-e50e24dcca9e']
     });
 
-    logDebug("Dispositivo seleccionado: " + (device.name || "Sin nombre"));
-
     const server = await device.gatt.connect();
-    logDebug("Conectado al servidor GATT");
+    const service = await server.getPrimaryService(
+      '6e400001-b5a3-f393-e0a9-e50e24dcca9e'
+    );
 
-    const service = await server.getPrimaryService('6e400001-b5a3-f393-e0a9-e50e24dcca9e');
-    characteristic = await service.getCharacteristic('6e400003-b5a3-f393-e0a9-e50e24dcca9e');
+    // RX = notify (ESP32 -> HTML)
+    characteristicRX = await service.getCharacteristic(
+      '6e400003-b5a3-f393-e0a9-e50e24dcca9e'
+    );
 
-    await characteristic.startNotifications();
-    characteristic.addEventListener('characteristicvaluechanged', handleData);
+    // TX = write (HTML -> ESP32)
+    characteristicTX = await service.getCharacteristic(
+      '6e400002-b5a3-f393-e0a9-e50e24dcca9e'
+    );
 
-    status.textContent = "Estado: Conectado ✅";
-    logDebug("Notificaciones activadas. Esperando datos...");
+    await characteristicRX.startNotifications();
+    characteristicRX.addEventListener(
+      'characteristicvaluechanged',
+      handleData
+    );
 
-    device.addEventListener('gattserverdisconnected', () => {
-      logDebug("Dispositivo desconectado");
-      status.textContent = "Estado: Desconectado ❌";
-    });
+    status.textContent = "Conectado";
+    status.classList.add("status-connected");
+    log("✅ Conectado correctamente");
 
-  } catch (err) {
-    logDebug("Error BLE: " + err);
-    status.textContent = "Estado: Error ❌";
+    enviarFechaHora();   // 👈 NUEVO (1 sola vez)
+
+  } catch (e) {
+    status.textContent = "Error";
+    log("❌ Error BLE: " + e);
   }
-}
-
-/* ===== SD ===== */
-function toggleSD() {
-  recordingSD = !recordingSD;
-  btnSD.textContent = recordingSD ? "Rec SD: ON" : "Rec SD: OFF";
-  btnSD.classList.toggle("active", recordingSD);
-  statusSD.textContent = recordingSD ? "SD: Grabando" : "SD: Detenido";
-}
-
-/* ===== BATERÍA ===== */
-function updateBattery(state, volt) {
-  if (state === 0) {
-    batStatus.textContent = `🟢 Batería OK (${volt.toFixed(2)} V)`;
-    batStatus.style.color = "#22c55e";
-  } else if (state === 1) {
-    batStatus.textContent = `🟡 Batería Baja (${volt.toFixed(2)} V)`;
-    batStatus.style.color = "#f59e0b";
-  } else {
-    batStatus.textContent = `🔴 Batería CRÍTICA (${volt.toFixed(2)} V)`;
-    batStatus.style.color = "#ef4444";
-  }
-}
-
-/* ===== DATOS ===== */
-function handleData(e) {
-  const p = new TextDecoder().decode(e.target.value).split(",");
-  if (p.length !== 5) return;
-
-  const t = +p[1], v = +p[2], c = +p[3], bat = +p[4];
-
-  // Actualizar página principal
-  valTemp.textContent = t.toFixed(2) + " °C";
-  valVolt.textContent = v.toFixed(2) + " V";
-  valCorr.textContent = c.toFixed(3) + " A";
-
-  valTempSum.textContent = valTemp.textContent;
-  valVoltSum.textContent = valVolt.textContent;
-  valCorrSum.textContent = valCorr.textContent;
-
-  updateBattery(bat, v);
-  updateCharts(t, v, c);
-}
-
-/* ===== CHARTS ===== */
-const base = {
-  animation:false,
-  scales:{x:{type:'realtime',realtime:{delay:2000,ttl:60000}}}
 };
 
-const chartTemp = new Chart(chartTemp, {
-  type:'line',
-  data:{datasets:[{label:'Temperatura',borderColor:'#ef4444',data:[]}]},
-  options:base
-});
 
-const chartVolt = new Chart(chartVolt, {
-  type:'line',
-  data:{datasets:[{label:'Voltaje',borderColor:'#3b82f6',data:[]}]},
-  options:base
-});
 
-const chartCorr = new Chart(chartCorr, {
-  type:'line',
-  data:{datasets:[{label:'Corriente',borderColor:'#22c55e',data:[]}]},
-  options:base
-});
 
-function updateCharts(t,v,c){
-  const n=Date.now();
-  chartTemp.data.datasets[0].data.push({x:n,y:t});
-  chartVolt.data.datasets[0].data.push({x:n,y:v});
-  chartCorr.data.datasets[0].data.push({x:n,y:c});
-  [chartTemp,chartVolt,chartCorr].forEach(ch=>ch.update('none'));
+
+function enviarFechaHora() {
+  if (!characteristicTX) return;
+
+  const now = new Date();
+
+  const fecha =
+    now.getFullYear() + "-" +
+    String(now.getMonth() + 1).padStart(2, '0') + "-" +
+    String(now.getDate()).padStart(2, '0');
+
+  const hora =
+    String(now.getHours()).padStart(2, '0') + ":" +
+    String(now.getMinutes()).padStart(2, '0') + ":" +
+    String(now.getSeconds()).padStart(2, '0');
+
+  const cmd = "TIME," + fecha + "," + hora;
+
+  characteristicTX.writeValueWithoutResponse(
+    new TextEncoder().encode(cmd)
+  );
+
+  log("🕒 Hora enviada al ESP32: " + fecha + " " + hora);
+}
+
+
+/* CSV */
+btnCSV.onclick=()=>{
+  if(!dataCSV.length) return alert("No hay datos");
+  let csv="timestamp,temp,volt,corr,bat\n"; 
+  dataCSV.forEach(r=>csv+=r.join(",")+"\n");
+  const a=document.createElement('a'); 
+  a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv'})); 
+  a.download="datos.csv"; 
+  a.click();
+};
+
+/* SD */
+btnSD.onclick = async () => {
+  if (!characteristicTX) return alert("ESP32 no conectado");
+  recordingSD = !recordingSD;
+  const cmd = recordingSD ? "START" : "STOP";
+  try {
+    await characteristicTX.writeValueWithoutResponse(new TextEncoder().encode(cmd));
+    btnSD.textContent = recordingSD ? "Parar SD" : "Grabar SD";
+    log("Comando SD: " + cmd);
+  } catch (e) {
+    log("❌ Error enviando comando SD: " + e);
+  }
+};
+
+btnClearSD.onclick = async () => {
+  if (!characteristicTX) return alert("ESP32 no conectado");
+  try {
+    await characteristicTX.writeValueWithoutResponse(new TextEncoder().encode("CLEAR"));
+    log("Comando SD: CLEAR");
+  } catch (e) {
+    log("❌ Error borrando SD: " + e);
+  }
+};
+
+
+
+
+/* HANDLE DATA */
+function handleData(e){
+  const t = new TextDecoder().decode(e.target.value).trim();
+  log("RX: "+t);
+
+  const p = t.split(",");
+  if(p.length<5) return;
+
+  const temp = parseFloat(p[1]);
+  const volt = parseFloat(p[2]);
+  const corr = parseFloat(p[3]);
+  const bat = p[4]==="0"?"OK":p[4]==="1"?"BAJA":"CRITICA";
+  const now = new Date().toLocaleTimeString();
+
+  valTempAll.textContent = isNaN(temp) ? "-- °C" : temp.toFixed(2)+" °C";
+  valVoltAll.textContent = isNaN(volt) ? "-- V" : volt.toFixed(2)+" V";
+  valCorrAll.textContent = isNaN(corr) ? "-- A" : corr.toFixed(2)+" A";
+  valBatAll.textContent = bat;
+
+  valTemp.textContent = valTempAll.textContent;
+  valVolt.textContent = valVoltAll.textContent;
+  valCorr.textContent = valCorrAll.textContent;
+  valBat.textContent = bat;
+
+  if(!isNaN(temp)){ dataTemp.push(temp); if(dataTemp.length>50) dataTemp.shift(); }
+  if(!isNaN(volt)){ dataVolt.push(volt); if(dataVolt.length>50) dataVolt.shift(); }
+  if(!isNaN(corr)){ dataCorr.push(corr); if(dataCorr.length>50) dataCorr.shift(); }
+
+  if(dataTemp.length){
+    const avg = dataTemp.reduce((a,b)=>a+b,0)/dataTemp.length;
+    avgTemp.textContent = avg.toFixed(2);
+    maxTemp.textContent = Math.max(...dataTemp).toFixed(2);
+    minTemp.textContent = Math.min(...dataTemp).toFixed(2);
+  }
+  if(dataVolt.length){
+    const avg = dataVolt.reduce((a,b)=>a+b,0)/dataVolt.length;
+    avgVolt.textContent = avg.toFixed(2);
+    maxVolt.textContent = Math.max(...dataVolt).toFixed(2);
+    minVolt.textContent = Math.min(...dataVolt).toFixed(2);
+  }
+  if(dataCorr.length){
+    const avg = dataCorr.reduce((a,b)=>a+b,0)/dataCorr.length;
+    avgCorr.textContent = avg.toFixed(2);
+    maxCorr.textContent = Math.max(...dataCorr).toFixed(2);
+    minCorr.textContent = Math.min(...dataCorr).toFixed(2);
+  }
+
+  dataCSV.push([now,temp,volt,corr,bat]);
+
+  if(!isNaN(temp)) agregarDato(chartTemp, dataTempHist, temp, now, sliders.temp, autoScrollTemp, 'temp');
+  if(!isNaN(volt)) agregarDato(chartVolt, dataVoltHist, volt, now, sliders.volt, autoScrollVolt, 'volt');
+  if(!isNaN(corr)) agregarDato(chartCorr, dataCorrHist, corr, now, sliders.corr, autoScrollCorr, 'corr');
 }
 </script>
 
