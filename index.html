@@ -207,10 +207,158 @@ input.sliderX::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;wi
 }
 
 
-</style>
+/* ===== STATUS + RESET ===== */
+    .status-row{
+      display:inline-flex;
+      align-items:center;
+      gap:8px;
+    }
+
+    /* ===== HEADER MOBILE ===== */
+    .header-row{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+    }
+
+    /* ===== RESET BUTTON ===== */
+    #btnRST,
+    #btnRSTmobile{
+      width:38px;
+      height:38px;
+      border-radius:10px;
+      font-size:18px;
+      font-weight:900;
+      background:#020617;
+      color:#ef4444;
+      border:1px solid #1e293b;
+      cursor:pointer;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+    }
+
+    #btnRST:hover,
+    #btnRSTmobile:hover{
+      background:#ef4444;
+      color:white;
+    }
+
+    /* RESPONSIVE */
+    @media (max-width:768px){
+      .status-row{ display:none; }
+    }
+
+#btnRST{
+  display:none;
+}
+
+
+.card .top-row,
+.card .status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+#statusSD {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  min-width: 185px;
+  flex: 1 1 auto;
+}
+
+/* Indicador REC dentro de SD */
+#statusSD #recIndicator {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 12px;
+  font-size: 14px;
+}
+
+#statusSD .rec-dot.rec-on {
+  font-weight: 800;
+  color: white;
+  background: #dc2626;
+  box-shadow: 0 0 10px rgba(220,38,38,.9);
+  animation: blink 1s infinite;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+
+#statusSD .rec-time {
+  font-weight: 600;
+  color: var(--text);
+  min-width: 40px;
+  text-align: center;
+}
+
+/* Mensajes SD */
+#statusSD #sdMessages {
+  height: 20px;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: monospace;
+  font-size: 8px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+/* Animación REC */
+.rec-on {
+  color: white;
+  background: #dc2626;
+  box-shadow: 0 0 10px rgba(220,38,38,.9);
+  animation: blink 1s infinite;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 800;
+}
+
+.rec-off {
+  color: #726666;
+  background: #000000;
+  border: 1px solid #2f2644;
+  padding: 6px 14px;
+  border-radius: 12px;
+  font-weight: 800;
+}
+
+/* ================== MOBILE ================== */
+@media (max-width: 768px){
+  #statusSD {
+    flex-direction: column;
+  }
+
+  #statusSD #recIndicator {
+    font-size: 12px;
+    gap: 8px;
+  }
+
+  #statusSD #sdMessages {
+    height: 24px;
+    font-size: 8px;
+  }
+}
+
+
+  </style>
 </head>
 <body>
-<header><h1>ESP32 · BLE Dashboard</h1></header>
+<header>
+  <div class="header-row">
+    <h1>ESP32 · BLE Dashboard</h1>
+    <button id="btnRSTmobile" title="Reset ESP32">⏻</button>
+  </div>
+</header>
 <main>
 <div class="card">
   <button id="btnConnect">Conectar ESP32</button>
@@ -219,11 +367,23 @@ input.sliderX::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;wi
   <button id="btnClearSD">Formatear SD</button>
   <button id="btnResetZoom">Reset Zoom</button>
   <span id="status">Estado: Desconectado</span>
-  <span id="recIndicator" class="rec-off">
+
+ <!-- SD con REC integrado -->
+<div id="statusSD" class="card" style="flex: 1 1 auto; min-width:185px; padding:8px; display:flex; flex-direction:column; gap:6px;">
+  <!-- REC arriba -->
+  <div id="recIndicator" class="rec-off" style="display:flex; justify-content:center; align-items:center; gap:12px; font-size:14px;">
     <span class="rec-dot">● REC</span>
     <span class="rec-time">00:00</span>
-  </span>
-</div>
+  </div>
+
+  <!-- Mensajes SD abajo -->
+  <div id="sdMessages" style="height:24px; font-size:13px;"></div>
+
+
+
+
+
+
 
 <div class="tabs">
   <div class="tab active" data-tab="all">Todos</div>
@@ -287,6 +447,9 @@ const dataCSV=[], dataTemp=[], dataVolt=[], dataCorr=[];
 const dataTempHist=[], dataVoltHist=[], dataCorrHist=[];
 const MAX_POINTS=50;
 let autoScrollTemp=true, autoScrollVolt=true, autoScrollCorr=true;
+let sdQueue = [];        // Cola de mensajes SD pendientes
+let sdDisplaying = false; // Flag si ya se está mostrando un mensaje
+
 
 // Elementos HTML
 const btnConnect=document.getElementById('btnConnect');
@@ -294,8 +457,23 @@ const btnCSV=document.getElementById('btnCSV');
 const btnSD=document.getElementById('btnSD');
 const btnClearSD=document.getElementById('btnClearSD');
 const btnResetZoom=document.getElementById('btnResetZoom');
+const btnRST=document.getElementById('btnRST');
+const sdMessages = document.getElementById('sdMessages');
+//const btnClearSDLog = document.getElementById('btnClearSDLog');
+
+
+
 const status=document.getElementById('status');
 const debug=document.getElementById('debug');
+function log(msg){
+  debug.textContent += msg + "\n";
+  debug.scrollTop = debug.scrollHeight;
+}
+
+//btnClearSDLog.onclick = () => {
+  //sdMessages.textContent = "";
+//};
+
 
 const valTempAll=document.getElementById('valTempAll');
 const valVoltAll=document.getElementById('valVoltAll');
@@ -324,7 +502,28 @@ const sliders={
 };
 
 // ================== Funciones ==================
-function log(msg){ debug.textContent += msg + "\n"; debug.scrollTop=debug.scrollHeight; }
+function logSD(msg){
+  sdQueue.push(msg);      // agregamos mensaje a la cola
+  if(!sdDisplaying) showNextSD(); // si no se estaba mostrando nada, arrancamos
+}
+
+function showNextSD(){
+  if(sdQueue.length === 0){
+    sdDisplaying = false;
+    return;
+  }
+
+  sdDisplaying = true;
+  const msg = sdQueue.shift();  // sacamos el primer mensaje
+  sdMessages.textContent = msg;
+
+  // Mostrar cada mensaje mínimo 1.5 segundos
+  setTimeout(() => {
+    showNextSD();  // mostramos el siguiente mensaje si hay
+  }, 1500); 
+}
+
+
 
 // Tabs
 document.querySelectorAll('.tab').forEach(tab=>{
@@ -419,16 +618,65 @@ btnConnect.onclick = async ()=>{
 
 function enviarFechaHora(){
   if(!characteristicTX) return;
-  const now=new Date();
-  const fecha=`${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}`;
-  const hora=`${now.getHours()}:${now.getMinutes()}:${now.getSeconds()}`;
-  characteristicTX.writeValueWithoutResponse(new TextEncoder().encode(`TIME:${fecha} ${hora}`));
+
+  const now = new Date();
+
+  const fecha =
+    now.getFullYear() + "-" +
+    String(now.getMonth()+1).padStart(2,"0") + "-" +
+    String(now.getDate()).padStart(2,"0");
+
+  const hora =
+    String(now.getHours()).padStart(2,"0") + ":" +
+    String(now.getMinutes()).padStart(2,"0") + ":" +
+    String(now.getSeconds()).padStart(2,"0");
+
+  // 👇 FORMATO CORRECTO PARA EL ESP32
+  const cmd = `TIME,${fecha},${hora}`;
+  characteristicTX.writeValueWithoutResponse(
+    new TextEncoder().encode(cmd)
+  );
 }
+
 
 // ================== HandleData ==================
 function handleData(e){
-  const t=new TextDecoder().decode(e.target.value).trim();
-  log("RX: "+t);
+  const t = new TextDecoder().decode(e.target.value).trim();
+
+  // Mostrar mensaje SD
+  if(t.toLowerCase().includes("sd") || t.toLowerCase().includes("grabando") || t.toLowerCase().includes("borrado") || t.toLowerCase().includes("error") || t.toLowerCase().includes("grabación detenida")){
+  logSD(t);
+
+    // Solo si es confirmación de inicio de grabación
+    if(t.toLowerCase().includes("grabando")){
+      const recDot = document.querySelector("#recIndicator .rec-dot");
+      const recTime = document.querySelector("#recIndicator .rec-time");
+
+      recDot.className = "rec-dot rec-on";
+      startTime = Date.now();
+      recTime.textContent = "00:00";
+      timerInterval = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const minutes = String(Math.floor(elapsed / 60000)).padStart(2,'0');
+        const seconds = String(Math.floor((elapsed % 60000)/1000)).padStart(2,'0');
+        recTime.textContent = `${minutes}:${seconds}`;
+      }, 1000);
+    }
+
+    // Si es mensaje de error, aseguramos detener REC
+    if(t.toLowerCase().includes("error") || t.toLowerCase().includes("no hay sd")){
+      recordingSD = false;
+      const recDot = document.querySelector("#recIndicator .rec-dot");
+      const recTime = document.querySelector("#recIndicator .rec-time");
+      recDot.className = "rec-dot rec-off";
+      recTime.textContent = "";
+      clearInterval(timerInterval);
+    }
+
+  } else {
+      log("RX: " + t);
+  }
+
   const p=t.split(",");
   if(p.length<5) return;
 
@@ -436,7 +684,22 @@ function handleData(e){
   const volt=parseFloat(p[2]);
   const corr=parseFloat(p[3]);
   const bat=p[4]==="0"?"OK":p[4]==="1"?"BAJA":"CRITICA";
-  const now=new Date().toLocaleTimeString();
+
+  const d = new Date();
+
+const fecha =
+  d.getFullYear() + "-" +
+  String(d.getMonth()+1).padStart(2,"0") + "-" +
+  String(d.getDate()).padStart(2,"0");
+
+const hora =
+  String(d.getHours()).padStart(2,"0") + ":" +
+  String(d.getMinutes()).padStart(2,"0") + ":" +
+  String(d.getSeconds()).padStart(2,"0");
+
+dataCSV.push([fecha, hora, temp, volt, corr, bat]);
+
+
 
   valTempAll.textContent=isNaN(temp)?"-- °C":temp.toFixed(2)+" °C";
   valVoltAll.textContent=isNaN(volt)?"-- V":volt.toFixed(2)+" V";
@@ -456,7 +719,8 @@ function handleData(e){
   if(dataVolt.length){ const avg=dataVolt.reduce((a,b)=>a+b,0)/dataVolt.length; avgVolt.textContent=avg.toFixed(2); maxVolt.textContent=Math.max(...dataVolt).toFixed(2); minVolt.textContent=Math.min(...dataVolt).toFixed(2);}
   if(dataCorr.length){ const avg=dataCorr.reduce((a,b)=>a+b,0)/dataCorr.length; avgCorr.textContent=avg.toFixed(2); maxCorr.textContent=Math.max(...dataCorr).toFixed(2); minCorr.textContent=Math.min(...dataCorr).toFixed(2);}
 
-  dataCSV.push([now,temp,volt,corr,bat]);
+
+const now = hora;
 
   if(!isNaN(temp)) agregarDato(chartTemp,dataTempHist,temp,now,sliders.temp,autoScrollTemp,'temp');
   if(!isNaN(volt)) agregarDato(chartVolt,dataVoltHist,volt,now,sliders.volt,autoScrollVolt,'volt');
@@ -466,38 +730,91 @@ function handleData(e){
 // ================== Botones SD ==================
 btnSD.onclick = async () => {
   if(!characteristicTX) return alert("ESP32 no conectado");
-  recordingSD=!recordingSD;
-  const cmd=recordingSD?"START":"STOP";
-  try{
+
+  const cmd = recordingSD ? "STOP" : "START";
+  try {
     await characteristicTX.writeValueWithoutResponse(new TextEncoder().encode(cmd));
-    log("Comando SD enviado: "+cmd);
+    logSD("Comando SD enviado: " + cmd);
 
-    const recDot=document.querySelector("#recIndicator .rec-dot");
-    const recTime=document.querySelector("#recIndicator .rec-time");
-    recDot.className=recordingSD?"rec-dot rec-on":"rec-dot rec-off";
-
-    if(recordingSD){
-      startTime=Date.now(); recTime.textContent="00:00";
-      timerInterval=setInterval(()=>{
-        const elapsed=Date.now()-startTime;
-        const minutes=String(Math.floor(elapsed/60000)).padStart(2,'0');
-        const seconds=String(Math.floor((elapsed%60000)/1000)).padStart(2,'0');
-        recTime.textContent=`${minutes}:${seconds}`;
-      },1000);
-    }else{
+    // Si es STOP, detenemos inmediatamente contador y animación
+    if(cmd === "STOP"){
+      recordingSD = false;
+      const recDot = document.querySelector("#recIndicator .rec-dot");
+      const recTime = document.querySelector("#recIndicator .rec-time");
+      recDot.className = "rec-dot rec-off";
+      recTime.textContent = "";
       clearInterval(timerInterval);
-      recTime.textContent="";
     }
-  }catch(e){ log("❌ Error enviando comando SD: "+e); }
+
+    // Si es START, solo marcamos la intención, el contador real inicia al recibir "Grabando"
+    if(cmd === "START"){
+      recordingSD = true; // intención de grabar
+    }
+
+  } catch(e) {
+    logSD("❌ Error enviando comando SD: " + e);
+    recordingSD = false;
+  }
 };
 
 btnClearSD.onclick = async () => {
   if(!characteristicTX) return alert("ESP32 no conectado");
   try{
     await characteristicTX.writeValueWithoutResponse(new TextEncoder().encode("CLEAR"));
-    log("Comando SD enviado: CLEAR");
-  }catch(e){ log("❌ Error borrando SD: "+e); }
+    logSD("Comando SD enviado: CLEAR");
+  }catch(e){ logSD("❌ Error borrando SD: "+e); }
+
 };
+
+btnCSV.onclick = () => {
+  if (!dataCSV.length) {
+    alert("No hay datos para exportar");
+    return;
+  }
+
+  let csv = "Fecha;Hora;Temperatura;Voltaje;Corriente;Bateria\n";
+
+
+  dataCSV.forEach(row => {
+    csv += row.join(";") + "\n";
+  });
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "datos_ESP32.csv";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+
+};
+const btnRSTmobile = document.getElementById('btnRSTmobile');
+
+async function enviarReset() {
+  if(!characteristicTX) return alert("ESP32 no conectado");
+  if(!confirm("¿Resetear el ESP32?")) return;
+
+  try {
+    await characteristicTX.writeValueWithoutResponse(
+      new TextEncoder().encode("RST")
+    );
+    log("🔁 Reset enviado");
+
+  setTimeout(() => {
+      location.reload();
+    }, 500); // medio segundo de espera para que el comando llegue
+  } catch(e) {
+    console.log("❌ Error enviando reset: " + e);
+  }
+}
+
+// Conecta solo el botón que queda
+if(btnRSTmobile) btnRSTmobile.onclick = enviarReset;
+
+
 
 </script>
 </body>
