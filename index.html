@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>ESP32 BLE Dashboard</title>
+<title>ESP32 - Dashboard</title>  
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
 <style>
@@ -141,9 +141,9 @@ input.sliderX::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;wi
   }
 
   /* ===== CANVAS ===== */
-  canvas {
-    width: 100% !important;
-    height: 220px !important;
+    canvas {
+    width: 100%;        
+    height: 35vh;       
   }
 
   /* ===== DEBUG ===== */
@@ -224,14 +224,14 @@ input.sliderX::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;wi
     /* ===== RESET BUTTON ===== */
     #btnRST,
     #btnRSTmobile{
-      width:38px;
-      height:38px;
+      width:55px;
+      height:28px;
       border-radius:10px;
-      font-size:18px;
-      font-weight:900;
+      font-size:15px;
+      font-weight:750;
       background:#020617;
       color:#ef4444;
-      border:1px solid #1e293b;
+      border:1px solid #ef4444;
       cursor:pointer;
       display:flex;
       align-items:center;
@@ -352,11 +352,11 @@ input.sliderX::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;wi
 
   </style>
 </head>
-<body>
+<body>     
 <header>
   <div class="header-row">
-    <h1>ESP32 · BLE Dashboard</h1>
-    <button id="btnRSTmobile" title="Reset ESP32">⏻</button>
+    <h1>ESP32 - Dashboard</h1>
+    <button id="btnRSTmobile" title="Reset ESP32">Reset</button>
   </div>
 </header>
 <main>
@@ -378,10 +378,6 @@ input.sliderX::-webkit-slider-thumb{-webkit-appearance: none;appearance: none;wi
 
   <!-- Mensajes SD abajo -->
   <div id="sdMessages" style="height:24px; font-size:13px;"></div>
-
-
-
-
 
 
 
@@ -524,7 +520,6 @@ function showNextSD(){
 }
 
 
-
 // Tabs
 document.querySelectorAll('.tab').forEach(tab=>{
   tab.onclick=()=>{
@@ -534,19 +529,39 @@ document.querySelectorAll('.tab').forEach(tab=>{
   }
 });
 
-// Crear charts
+// Crear charts original
 function crearChart(canvas,label,color){
   return new Chart(canvas,{
     type:'line',
-    data:{labels:[], datasets:[{label,data:[],borderColor:color,backgroundColor:'rgba(255,255,255,0.06)',fill:true,tension:0.4,cubicInterpolationMode:'monotone',pointRadius:4,pointHoverRadius:6,borderWidth:4}]},
+    data:{
+      labels:[],
+      datasets:[{
+        label,
+        data:[],
+        borderColor:color,
+        backgroundColor:'rgba(255,255,255,0.06)',
+        fill:true,
+        tension:0.4,
+        cubicInterpolationMode:'monotone',
+        pointRadius:4,
+        pointHoverRadius:6,
+        borderWidth:4
+      }]
+    },
     options:{
       animation:{duration:300,easing:'linear'},
       responsive:true,
       plugins:{
         legend:{labels:{color:'#e5e7eb'}},
-        zoom:{pan:{enabled:true,mode:'x'}, zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'}}
+        zoom:{
+          pan:{enabled:true,mode:'x'},
+          zoom:{wheel:{enabled:true},pinch:{enabled:true},mode:'x'}
+        }
       },
-      scales:{x:{grid:{color:'rgba(148,163,184,0.08)'},ticks:{color:'#94a3b8'}}, y:{grid:{color:'rgba(148,163,184,0.08)'},ticks:{color:'#94a3b8'},min:0}}
+      scales:{
+        x:{grid:{color:'rgba(148,163,184,0.08)'},ticks:{color:'#94a3b8'}},
+        y:{grid:{color:'rgba(148,163,184,0.08)'},ticks:{color:'#94a3b8'}, min:0} // eje Y empieza en 0
+      }
     }
   });
 }
@@ -555,35 +570,52 @@ const chartTemp=crearChart(document.getElementById('chartTemp'),'Temperatura (°
 const chartVolt=crearChart(document.getElementById('chartVolt'),'Voltaje (V)','#3b82f6');
 const chartCorr=crearChart(document.getElementById('chartCorr'),'Corriente (A)','#22c55e');
 
-// Detectar zoom/pan para desactivar autoScroll
+// Detectar zoom o pan para desactivar autoScroll
 [chartTemp, chartVolt, chartCorr].forEach(chart=>{
   chart.options.plugins.zoom.onZoom = ()=>{ if(chart===chartTemp) autoScrollTemp=false; if(chart===chartVolt) autoScrollVolt=false; if(chart===chartCorr) autoScrollCorr=false; };
   chart.options.plugins.zoom.onPan = ()=>{ if(chart===chartTemp) autoScrollTemp=false; if(chart===chartVolt) autoScrollVolt=false; if(chart===chartCorr) autoScrollCorr=false; };
 });
 
-// Actualizar grafico
 function actualizarGrafico(chart,dataHist,slider,autoScrollFlag){
   const total = dataHist.length;
   const start = autoScrollFlag ? Math.max(0,total-MAX_POINTS) : parseInt(slider.value)||0;
   const visibleData = dataHist.slice(start,start+MAX_POINTS);
+
   chart.data.labels = visibleData.map(d=>d.time);
   chart.data.datasets[0].data = visibleData.map(d=>d.value);
+  chart.data.datasets[0].pointRadius = visibleData.map((d,i)=>{
+    if(i===0) return 4;
+    return d.value !== visibleData[i-1].value ? 4 : 0;
+  });
+  chart.data.datasets[0].pointHoverRadius = visibleData.map((d,i)=>{
+    if(i===0) return 6;
+    return d.value !== visibleData[i-1].value ? 6 : 0;
+  });
+
+  // Eje Y mínimo en 0
+  chart.options.scales.y.min = 0;
+
   chart.update('none');
+
   slider.max = Math.max(0,total-MAX_POINTS);
-  if(autoScrollFlag) slider.value=slider.max;
+  if(autoScrollFlag) slider.value = slider.max;
 }
 
-function agregarDato(chart,dataHist,value,now,slider,autoScrollFlag,tipo){
+function agregarDato(chart, dataHist, value, now, slider, autoScrollFlag, tipo){
   if(isNaN(value)) return;
   let umbral=0;
   if(tipo==='temp') umbral=3;
   else if(tipo==='volt'||tipo==='corr') umbral=0.1;
   const lastPoint = dataHist.length ? dataHist[dataHist.length-1].value : value;
-  const valorParaGrafico = Math.abs(value-lastPoint)>=umbral ? value : lastPoint;
-  dataHist.push({time:now,value:valorParaGrafico});
-  if(dataHist.length>MAX_POINTS*5) dataHist.splice(0,dataHist.length-MAX_POINTS*5);
+  const cambioRelevante = Math.abs(value - lastPoint) >= umbral;
+  const valorParaGrafico = cambioRelevante ? value : lastPoint;
+  dataHist.push({time:now,value:valorParaGrafico, mostrarPunto:cambioRelevante});
+  if(dataHist.length > MAX_POINTS*5) dataHist.splice(0,dataHist.length-MAX_POINTS*5);
+
   actualizarGrafico(chart,dataHist,slider,autoScrollFlag);
 }
+
+
 
 // Sliders
 sliders.temp.addEventListener('input',()=>{autoScrollTemp=false; actualizarGrafico(chartTemp,dataTempHist,sliders.temp,false);});
@@ -631,7 +663,7 @@ function enviarFechaHora(){
     String(now.getMinutes()).padStart(2,"0") + ":" +
     String(now.getSeconds()).padStart(2,"0");
 
-  // 👇 FORMATO CORRECTO PARA EL ESP32
+  // FORMATO CORRECTO PARA EL ESP32
   const cmd = `TIME,${fecha},${hora}`;
   characteristicTX.writeValueWithoutResponse(
     new TextEncoder().encode(cmd)
@@ -701,9 +733,9 @@ dataCSV.push([fecha, hora, temp, volt, corr, bat]);
 
 
 
-  valTempAll.textContent=isNaN(temp)?"-- °C":temp.toFixed(2)+" °C";
-  valVoltAll.textContent=isNaN(volt)?"-- V":volt.toFixed(2)+" V";
-  valCorrAll.textContent=isNaN(corr)?"-- A":corr.toFixed(2)+" A";
+  valTempAll.textContent=isNaN(temp)?"-- °C":temp.toFixed(1)+" °C";
+  valVoltAll.textContent=isNaN(volt)?"-- V":volt.toFixed(1)+" V";
+  valCorrAll.textContent=isNaN(corr)?"-- A":corr.toFixed(1)+" A";
   valBatAll.textContent=bat;
 
   valTemp.textContent=valTempAll.textContent;
@@ -715,9 +747,9 @@ dataCSV.push([fecha, hora, temp, volt, corr, bat]);
   if(!isNaN(volt)){ dataVolt.push(volt); if(dataVolt.length>MAX_POINTS) dataVolt.shift(); }
   if(!isNaN(corr)){ dataCorr.push(corr); if(dataCorr.length>MAX_POINTS) dataCorr.shift(); }
 
-  if(dataTemp.length){ const avg=dataTemp.reduce((a,b)=>a+b,0)/dataTemp.length; avgTemp.textContent=avg.toFixed(2); maxTemp.textContent=Math.max(...dataTemp).toFixed(2); minTemp.textContent=Math.min(...dataTemp).toFixed(2);}
-  if(dataVolt.length){ const avg=dataVolt.reduce((a,b)=>a+b,0)/dataVolt.length; avgVolt.textContent=avg.toFixed(2); maxVolt.textContent=Math.max(...dataVolt).toFixed(2); minVolt.textContent=Math.min(...dataVolt).toFixed(2);}
-  if(dataCorr.length){ const avg=dataCorr.reduce((a,b)=>a+b,0)/dataCorr.length; avgCorr.textContent=avg.toFixed(2); maxCorr.textContent=Math.max(...dataCorr).toFixed(2); minCorr.textContent=Math.min(...dataCorr).toFixed(2);}
+  if(dataTemp.length){ const avg=dataTemp.reduce((a,b)=>a+b,0)/dataTemp.length; avgTemp.textContent=avg.toFixed(1); maxTemp.textContent=Math.max(...dataTemp).toFixed(2); minTemp.textContent=Math.min(...dataTemp).toFixed(2);}
+  if(dataVolt.length){ const avg=dataVolt.reduce((a,b)=>a+b,0)/dataVolt.length; avgVolt.textContent=avg.toFixed(1); maxVolt.textContent=Math.max(...dataVolt).toFixed(2); minVolt.textContent=Math.min(...dataVolt).toFixed(2);}
+  if(dataCorr.length){ const avg=dataCorr.reduce((a,b)=>a+b,0)/dataCorr.length; avgCorr.textContent=avg.toFixed(1); maxCorr.textContent=Math.max(...dataCorr).toFixed(2); minCorr.textContent=Math.min(...dataCorr).toFixed(2);}
 
 
 const now = hora;
@@ -819,3 +851,4 @@ if(btnRSTmobile) btnRSTmobile.onclick = enviarReset;
 </script>
 </body>
 </html>
+ 
